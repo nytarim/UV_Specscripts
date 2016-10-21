@@ -1,0 +1,105 @@
+import seabreeze.spectrometers as sb
+from epics import PV, caget, caput
+import numpy as np
+import time
+
+class Ultraviolet:
+    """class for the acquitisition of absorbance data from the STS UV spectrometer"""
+    def __init__(self):
+        self.spec_STS = sb.Spectrometer.from_serial_number("S04417")
+        self.wavelength_req = [214, 260, 280, 550]
+        self.spec_STS.integration_time_micros(81400)
+        self.fname_PV = PV('')
+        self.det_PV = PV('13PIL1:cam1:Acquire')
+        self.det_state = self.detPV.value
+        self.ttl_PV = Unidig_PV # PV('SR13ID01HU02IOC0_:XXXXX')
+        self.StypePV = PV('SR13ID01HU02IOC04:SMPL_TYPE')
+
+
+    def dark_corr(self):
+        """ used to acquire a dark correction value for each pixel, to correct for electrical noise
+            fairly simple in that it acquires and averages the specified number of shots as the
+            dark correction (20 seems reasonable).  Important that the integration time be the same as for the actual
+            acquisition, as this heavily influences the dark counts."""
+        dark = None
+        dark_shots = []
+        cts = 0
+        dark_num = 20
+        while cts < dark_num:
+            dark_shots.append(spec_STS.intensities(correct_nonlinearity=True))
+            dark = np.average(dark_shots, axis=0)
+            cts += 1
+        return dark
+
+    def acquire(self, dark, num2avg = 10):
+        """ function to acquire a spectra of x number of averaged shots"""
+        spectra_STS = []
+        for i in range(num2avg):
+            spectra_STS.append((spec_STS.intensities(correct_nonlinearity=True) - dark))
+        spectrum = np.average(spectra_STS, axis=0)
+        return spectrum
+
+    def init_trans(self, dark):
+        """ a function to blank the spectrometer"""
+        init_intensity = self.acquire(dark)
+        return init_intensity
+
+    def wl_window(self):
+        """ a function to convert the wavelength request into a pixel number"""
+        wls= self.spec_STS.wavelengths()
+        pix_request = []
+        for i in self.wavelength_req:
+            pix_num = np.amax(np.where(wls<= i))
+            pix_request.append(pix_num)
+        return pix_request
+
+    def uv_initialise(self):
+        """ initialising the spectrometer for data collection"""
+        self.fname_abs = self.fname_PV.charvalue() + '_abs'
+        self.fname_spectra = self.fname_PV.charvalue() + '_spectra'
+        print('closed shutter for dark')  # place holder for ttl shutter close request caput(ttl_PV, 0).
+        time.sleep(1)
+        dark = self.dark_corr()
+        print('open shutter!') #placeholder for ttl shutter open request. caput(ttl_PV, 1)
+        time.sleep(1)
+        st_trans = self.init_trans(dark)
+        return dark, st_trans
+
+    def abs_data_collect(self, st_trans, dark):
+        """function to acquire intensity data and convert to absorbance data, returns both the intensity and absorbance spectra"""
+        intensity = self.acquire(dark)
+        pc_trans = (intensity / st_trans) * 100
+        absorbance = 2 - np.log10(pc_trans)
+        return intensity, absorbance
+
+    def logwrite_uv(self, collection_time, absorbance, intensity):
+        """function to write the absorbance value at a particular window, and the intensity and absorbance spectra to file."""
+
+        pix_request = self.wl_window()
+        with open(self.fname_abs, "a") as file:
+            file.write('{0}{1}{2}{3}{4}'.format(collection_time,
+                                                np.average(absorbance[pix_request[0] - 2:pix_request[0] + 2]),
+                                                np.average(absorbance[pix_request[1] - 2:pix_request[1] + 2]),
+                                                np.average(absorbance[pix_request[2] - 2:pix_request[2] + 2]),
+                                                np.average(absorbance[pix_request[3] - 2:pix_request[3] + 2])))
+        with open(self.fname_spectra, "a") as file:
+            file.write('{0}{1}{2}'.format(collection_time, absorbance, intensity))
+
+    def start_uv(self, timeout = 10):
+        """function to sequence all of the other functions and maintain a loop for collection"""
+        t0 = time.time()
+        dark, st_trans = self.uv_initialise()
+        intensities, absorbances = [], []
+        coll_time = []
+        while self.det_state == 1:
+            t2 =time.time()
+            self.det_state = caget(self.det_PV)
+            time.sleep(0.05)
+            t1 = time.time()
+            if t1-t2 > timeout:
+                break
+            coll_time.append(t1 - t0)
+            intensity, absorbance = self.abs_data_collect(st_trans, dark)
+            self.logwrite_uv(coll_time[-1], absorbance, intensity)
+            intensities.append(intensity)
+            absorbances.append(absorbance)
