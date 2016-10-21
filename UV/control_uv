@@ -14,7 +14,7 @@ class Ultraviolet:
         self.det_state = self.detPV.value
         self.ttl_PV = Unidig_PV # PV('SR13ID01HU02IOC0_:XXXXX')
         self.StypePV = PV('SR13ID01HU02IOC04:SMPL_TYPE')
-
+        self.intensities, self.absorbances = [], []
 
     def dark_corr(self):
         """ used to acquire a dark correction value for each pixel, to correct for electrical noise
@@ -63,6 +63,16 @@ class Ultraviolet:
         print('open shutter!') #placeholder for ttl shutter open request. caput(ttl_PV, 1)
         time.sleep(1)
         st_trans = self.init_trans(dark)
+        with open(self.fname_abs, "a") as file:
+            file.write('{0},{1},{2},{3},{4}\n'.format('Time (s)',
+                                                      wavelength_request[0],
+                                                      wavelength_request[1],
+                                                      wavelength_request[2],
+                                                      wavelength_request[3]))
+        with open(self.fname_spectra, "a") as file:
+            file.write('{0},{1},{2}\n'.format('Time (s)',
+                                              'Absorbance (a.u.)',
+                                              'Intensity (counts)'))
         return dark, st_trans
 
     def abs_data_collect(self, st_trans, dark):
@@ -74,22 +84,21 @@ class Ultraviolet:
 
     def logwrite_uv(self, collection_time, absorbance, intensity):
         """function to write the absorbance value at a particular window, and the intensity and absorbance spectra to file."""
-
         pix_request = self.wl_window()
         with open(self.fname_abs, "a") as file:
-            file.write('{0}{1}{2}{3}{4}'.format(collection_time,
-                                                np.average(absorbance[pix_request[0] - 2:pix_request[0] + 2]),
-                                                np.average(absorbance[pix_request[1] - 2:pix_request[1] + 2]),
-                                                np.average(absorbance[pix_request[2] - 2:pix_request[2] + 2]),
-                                                np.average(absorbance[pix_request[3] - 2:pix_request[3] + 2])))
+            file.write('{0},{1},{2},{3},{4}\n'.format(collection_time,
+                                                      np.average(absorbance[pix_request[0] - 2:pix_request[0] + 2]),
+                                                      np.average(absorbance[pix_request[1] - 2:pix_request[1] + 2]),
+                                                      np.average(absorbance[pix_request[2] - 2:pix_request[2] + 2]),
+                                                      np.average(absorbance[pix_request[3] - 2:pix_request[3] + 2])))
         with open(self.fname_spectra, "a") as file:
-            file.write('{0}{1}{2}'.format(collection_time, absorbance, intensity))
+            file.write('{0}{1}{2}\n'.format(collection_time, absorbance, intensity))
 
     def start_uv(self, timeout = 10):
         """function to sequence all of the other functions and maintain a loop for collection"""
         t0 = time.time()
         dark, st_trans = self.uv_initialise()
-        intensities, absorbances = [], []
+        self.intensities, self.absorbances = [], []
         coll_time = []
         while self.det_state == 1:
             t2 =time.time()
@@ -101,5 +110,5 @@ class Ultraviolet:
             coll_time.append(t1 - t0)
             intensity, absorbance = self.abs_data_collect(st_trans, dark)
             self.logwrite_uv(coll_time[-1], absorbance, intensity)
-            intensities.append(intensity)
-            absorbances.append(absorbance)
+            self.intensities.append(intensity)
+            self.absorbances.append(absorbance)
