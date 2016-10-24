@@ -1,5 +1,5 @@
 import seabreeze.spectrometers as sb
-from epics import PV, caget, caput
+from epics import PV
 import numpy as np
 import time
 
@@ -9,13 +9,13 @@ class Ultraviolet:
         self.spec_STS = sb.Spectrometer.from_serial_number("S04417")
         self.wavelength_req = [214, 260, 280, 550]
         self.spec_STS.integration_time_micros(81400)
-        self.fname_PV = PV('')
+        self.path_PV = PV(''13PIL:cam1:FilePath')
+        self.fname_PV = PV('13PIL:cam1:FileName')
         self.det_PV = PV('13PIL1:cam1:Acquire')
-        self.det_state = self.detPV.value
-        self.ttl_PV = Unidig_PV # PV('SR13ID01HU02IOC0_:XXXXX')
+        self.det_state = self.det_PV.value
+        self.ttl_PV = PV('SR13ID01HU02IOC02:Unidig2Bo0')
         self.StypePV = PV('SR13ID01HU02IOC04:SMPL_TYPE')
         self.intensities, self.absorbances = [], []
-
     def dark_corr(self):
         """ used to acquire a dark correction value for each pixel, to correct for electrical noise
             fairly simple in that it acquires and averages the specified number of shots as the
@@ -55,13 +55,14 @@ class Ultraviolet:
 
     def uv_initialise(self):
         """ initialising the spectrometer for data collection"""
-        self.fname_abs = self.fname_PV.charvalue() + '_abs'
-        self.fname_spectra = self.fname_PV.charvalue() + '_spectra'
-        print('closed shutter for dark')  # place holder for ttl shutter close request caput(ttl_PV, 0).
-        time.sleep(1)
+        path = self.path_PV.char_value
+        self.fname_abs = path[:-7] + '/UV/' + self.fname_PV.char_value + '_abs'
+        self.fname_spectra = path[:-7] + '/UV/' self.fname_PV.charvalue + '_spectra'
+        ttl_PV.put(0)
+        time.sleep(0.2)
         dark = self.dark_corr()
-        print('open shutter!') #placeholder for ttl shutter open request. caput(ttl_PV, 1)
-        time.sleep(1)
+        ttl_PV.put(1)
+        time.sleep(0.2)
         st_trans = self.init_trans(dark)
         with open(self.fname_abs, "a") as file:
             file.write('{0},{1},{2},{3},{4}\n'.format('Time (s)',
