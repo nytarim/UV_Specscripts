@@ -71,9 +71,8 @@ class Ultraviolet:
                                                       wavelength_request[2],
                                                       wavelength_request[3]))
         with open(self.fname_spectra, "a") as file:
-            file.write('{0},{1},{2}\n'.format('Time (s)',
-                                              'Absorbance (a.u.)',
-                                              'Intensity (counts)'))
+            file.write('{0},{1},{2}\n'.format('Time (s)', 'Absorbance (a.u.)', 'Intensity (counts)'))
+            file.write('{0},{1},{2}\n'.format('    ', spec_STS.wavelengths(), '      ')
         return dark, st_trans
 
     def abs_data_collect(self, st_trans, dark):
